@@ -67,9 +67,9 @@ export default function ReportPage() {
       ))}
       <section className="flex flex-col gap-2 border-t border-border/70 pt-6 text-sm">
         <h2 className="font-heading text-xl font-semibold">Links</h2>
-        <Link className="text-status-cyan underline" href={REPO}>Repository (tag v1.0)</Link>
-        <Link className="text-status-cyan underline" href={`${REPO}/tree/v1.0/weights`}>Weights (weights/yolov8n.pt)</Link>
-        <Link className="text-status-cyan underline" href={`${REPO}/blob/v1.0/predictions_samples.json`}>predictions_samples.json</Link>
+        <Link className="text-status-cyan underline" href={REPO}>Repository (tag v1.1)</Link>
+        <Link className="text-status-cyan underline" href={`${REPO}/tree/v1.1/weights`}>Weights (weights/yolov8n.pt)</Link>
+        <Link className="text-status-cyan underline" href={`${REPO}/blob/v1.1/predictions_samples.json`}>predictions_samples.json</Link>
       </section>
     </div>
   );
