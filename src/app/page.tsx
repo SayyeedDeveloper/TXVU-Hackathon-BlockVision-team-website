@@ -6,10 +6,10 @@ import { PlayCircle, BarChart3 } from "lucide-react";
 import AbstractBackground from "@/components/AbstractBackground";
 
 const STATS = [
-  { n: "01", value: "14", label: "event classes", color: "var(--status-cyan)" },
+  { n: "01", value: "11 / 14", label: "event classes predicted", color: "var(--status-cyan)" },
   { n: "02", value: "rules + YOLO", label: "detection engines", color: "var(--status-green)" },
-  { n: "03", value: "5", label: "violation types tracked", color: "var(--status-orange)" },
-  { n: "04", value: "real-time", label: "capable pipeline", color: "var(--status-red)" },
+  { n: "03", value: "59", label: "hand-labelled dev events", color: "var(--status-orange)" },
+  { n: "04", value: "\u2264 2.3\u00d7", label: "video length to process (limit 3\u00d7)", color: "var(--status-red)" },
 ];
 
 const container = {
@@ -101,8 +101,8 @@ export default function Home() {
             The system pairs a pretrained YOLO detector with deterministic,
             hand-written rule logic: tracked vehicle and pedestrian
             trajectories are checked against hand-drawn lane, crosswalk, and
-            stop-line geometry to flag wrong-way driving, red-light running,
-            jaywalking, and other violations as time-stamped events. No part
+            stop-line geometry to flag jaywalking, congestion, red-light running,
+            stopped vehicles, and other violations as time-stamped events. No part
             of the pipeline is trained on the team&apos;s own footage.
           </p>
         </motion.div>

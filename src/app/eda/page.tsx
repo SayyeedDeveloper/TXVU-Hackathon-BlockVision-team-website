@@ -11,11 +11,10 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import RevealSection from "@/components/eda/RevealSection";
-import PlaceholderNote from "@/components/eda/PlaceholderNote";
+import DATA from "@/data/samples.json";
 import { EVENT_COLORS, type EventClass } from "@/lib/eventColors";
 
 const STATUS_COLORS = [
@@ -26,73 +25,42 @@ const STATUS_COLORS = [
   "var(--status-gray)",
 ];
 
-// TODO: replace with a real samples/ directory listing (name, duration via
-// ffprobe/cv2, resolution, fps) once sample footage is checked into the repo.
-const SAMPLE_CLIPS = [
-  {
-    file: "clip_01.mp4",
-    resolution: "1920x1080",
-    fps: 30,
-    duration: "45s",
-    note: "4-way signalized intersection, elevated camera angle",
-  },
-  {
-    file: "clip_02.mp4",
-    resolution: "1280x720",
-    fps: 25,
-    duration: "62s",
-    note: "T-junction with marked crosswalk, roadside camera",
-  },
-  {
-    file: "clip_03.mp4",
-    resolution: "1920x1080",
-    fps: 30,
-    duration: "38s",
-    note: "Roundabout approach, overhead angle",
-  },
-  {
-    file: "clip_04.mp4",
-    resolution: "1280x720",
-    fps: 24,
-    duration: "55s",
-    note: "Straight road segment with pedestrian crossing, side-mounted camera",
-  },
-];
+// Real numbers from the 4 sample videos (src/data/samples.json, generated from
+// the pipeline's own tracks and our Label Studio labels).
+const NOTES: Record<string, string> = {
+  C3896: "Daytime; main framing (lanes, crosswalks and stop line hand-drawn on this view)",
+  C3897: "Daytime; identical framing to C3896",
+  C3902: "Daytime; zoomed-out framing, crosswalks sit lower in the frame",
+  C3905: "Evening; framing shifted slightly from C3896",
+};
+const SAMPLE_CLIPS = DATA.videos.map((v) => ({
+  file: v.file,
+  resolution: `${v.width}x${v.height}`,
+  fps: v.fps,
+  duration: `${v.duration}s`,
+  note: NOTES[v.id],
+}));
 
-// TODO: replace with real YOLO detection counts aggregated across samples/.
-const OBJECT_COUNTS = [
-  { cls: "car", count: 1240 },
-  { cls: "pedestrian", count: 380 },
-  { cls: "motorcycle", count: 210 },
-  { cls: "truck", count: 95 },
-  { cls: "bus", count: 40 },
-];
+const OBJECT_COUNTS = ["car", "person", "bus", "truck", "motorcycle", "bicycle"].map((cls) => ({
+  cls,
+  count: DATA.videos.reduce((n, v) => n + ((v.tracksByClass as Record<string, number>)[cls] ?? 0), 0),
+}));
 
-// TODO: replace with real counts from examples/*.json / predictions_samples.json
-// once rule-evaluation output exists for the sample set.
-const EVENT_COUNTS = [
-  { cls: "congestion", count: 320 },
-  { cls: "jaywalking", count: 145 },
-  { cls: "stopped_vehicle", count: 130 },
-  { cls: "solid_line_crossing", count: 90 },
-  { cls: "illegal_turn", count: 75 },
-  { cls: "stop_line", count: 60 },
-  { cls: "red_light", count: 55 },
-  { cls: "wrong_way", count: 40 },
-  { cls: "failure_to_yield", count: 35 },
-  { cls: "near_miss", count: 20 },
-  { cls: "illegal_u_turn", count: 15 },
-  { cls: "road_obstacle", count: 10 },
-  { cls: "accident", count: 3 },
-  { cls: "fire_smoke", count: 1 },
-].sort((a, b) => b.count - a.count);
+const EVENT_COUNTS = Object.entries(DATA.labelCounts as Record<string, number>)
+  .map(([cls, count]) => ({ cls, count }))
+  .sort((a, b) => b.count - a.count);
 
-// TODO: replace with real ByteTrack output stats (avg track length, tracks/video).
+const totalTracks = DATA.videos.reduce((n, v) => n + v.tracks, 0);
+const longest = DATA.videos.reduce((a, v) => (v.longestTrackSec > a.longestTrackSec ? v : a));
 const TRACK_STATS = [
-  { label: "avg track length", value: "4.2s", sub: "≈ 126 frames @ 30fps" },
-  { label: "tracks per video", value: "38", sub: "average across 4 clips" },
-  { label: "total tracks", value: "152", sub: "across sample set" },
-  { label: "longest track", value: "18.6s", sub: "single vehicle, clip_03" },
+  {
+    label: "avg track length",
+    value: `${(DATA.videos.reduce((n, v) => n + v.meanTrackSec, 0) / DATA.videos.length).toFixed(1)}s`,
+    sub: "mean over the 4 videos (ByteTrack, every 3rd frame)",
+  },
+  { label: "tracks per video", value: `${Math.round(totalTracks / DATA.videos.length)}`, sub: "average across 4 clips" },
+  { label: "total tracks", value: `${totalTracks}`, sub: "across the 18 min of footage" },
+  { label: "longest track", value: `${longest.longestTrackSec}s`, sub: `in ${longest.file}` },
 ];
 
 function ChartTooltip({
@@ -129,26 +97,22 @@ export default function EdaPage() {
           What the sample footage looks like.
         </h1>
         <p className="max-w-xl text-muted-foreground">
-          A first look at the sample clips and the pipeline&apos;s expected
-          output shape, before the full detection and rule-evaluation runs
-          are in.
+          The four sample clips, what our detector and tracker find in them, and
+          the events we labelled by hand.
         </p>
-        <div className="mt-2 flex items-start gap-2 rounded-md border border-status-orange/30 bg-status-orange/5 px-4 py-3">
-          <Badge
-            variant="outline"
-            className="h-auto shrink-0 border-status-orange/50 px-2 py-0.5 font-mono text-[0.65rem] text-status-orange"
-          >
-            sample data
-          </Badge>
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            The pipeline hasn&apos;t been run on real footage yet, so every
-            chart below uses clearly-labeled placeholder numbers that
-            illustrate the intended shape of the output. Real numbers will
-            replace these once <code className="font-mono">samples/</code>,{" "}
-            <code className="font-mono">examples/*.json</code>, and{" "}
-            <code className="font-mono">predictions_samples.json</code> exist
-            in the repo.
-          </p>
+        <div className="mt-2 flex flex-col gap-1 rounded-md border border-border/70 bg-card/40 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+          <span>
+            Four clips, 18.4 minutes, all from one fixed camera: <b>3840x2160 @ 29.97 fps, H.264 High 4:2:2 10-bit</b>.
+          </span>
+          <span>
+            Finding that shaped the pipeline: OpenCV decodes this format at ~25 fps (slower than real time) and
+            NVIDIA&apos;s hardware decoder cannot read 4:2:2 H.264, so we decode once with multi-threaded ffmpeg and
+            drop 2 of every 3 frames before colour conversion (~3x real time).
+          </span>
+          <span>
+            Finding: the camera is re-framed between clips (C3896 = C3897, C3905 shifted, C3902 zoomed out), so
+            scene geometry has to be drawn per framing.
+          </span>
         </div>
       </motion.div>
 
@@ -168,10 +132,7 @@ export default function EdaPage() {
             </Card>
           ))}
         </div>
-        <PlaceholderNote>
-          TODO: replace with a real samples/ directory listing (name, duration
-          via ffprobe/cv2, resolution, fps).
-        </PlaceholderNote>
+        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">Same junction and camera in every clip; the differences are framing and lighting.</p>
       </RevealSection>
 
       <Separator />
@@ -216,10 +177,7 @@ export default function EdaPage() {
             </div>
           </CardContent>
         </Card>
-        <PlaceholderNote>
-          TODO: replace with real YOLO detection counts aggregated across
-          samples/.
-        </PlaceholderNote>
+        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">Unique ByteTrack tracks by class across all 4 clips (a car that is tracked twice counts twice). Pedestrians make up ~40% of tracks, which is why jaywalking dominates the events.</p>
       </RevealSection>
 
       <Separator />
@@ -230,9 +188,7 @@ export default function EdaPage() {
           Event class distribution
         </h2>
         <p className="text-sm text-muted-foreground">
-          Event counts across all 14 official classes — class imbalance is
-          expected: common events like congestion vastly outnumber rare ones
-          like accidents.
+          Hand-labelled events per class in the sample videos: heavily imbalanced.
         </p>
         <Card className="border border-border/70 bg-card/60 shadow-none">
           <CardContent className="pt-4">
@@ -269,11 +225,7 @@ export default function EdaPage() {
             </div>
           </CardContent>
         </Card>
-        <PlaceholderNote>
-          TODO: replace with real counts from examples/*.json /
-          predictions_samples.json once rule-evaluation output exists for the
-          sample set.
-        </PlaceholderNote>
+        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">Our own Label Studio labels (59 events). Jaywalking is 54% of all events; accident, wrong_way, road_obstacle and fire_smoke never occur in the samples.</p>
       </RevealSection>
 
       <Separator />
@@ -295,10 +247,7 @@ export default function EdaPage() {
             </div>
           ))}
         </div>
-        <PlaceholderNote>
-          TODO: replace with real ByteTrack output stats (avg track length,
-          tracks/video) once tracking is run on sample footage.
-        </PlaceholderNote>
+        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">Tracks break when objects are occluded (buses, trucks), so one vehicle often gets several IDs.</p>
       </RevealSection>
     </div>
   );

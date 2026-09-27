@@ -9,94 +9,37 @@ import RevealSection from "@/components/eda/RevealSection";
 import ClipMedia from "@/components/results/ClipMedia";
 import TimelineStrip, { type TimelineEvent } from "@/components/results/TimelineStrip";
 import { EVENT_CLASSES, EVENT_COLORS } from "@/lib/eventColors";
+import DATA from "@/data/samples.json";
 
-// TODO: once visualize_trails.py (or equivalent) produces small annotated
-// clips, drop them at public/results/<file> — ClipMedia will pick them up
-// automatically and stop showing the placeholder panel. Until then, duration
-// and events below are illustrative placeholder data, not real pipeline output.
-const CLIPS: {
-  file: string;
-  videoSrc: string;
-  duration: number;
-  caption: string;
-  events: TimelineEvent[];
-}[] = [
-  {
-    file: "clip_01.mp4",
-    videoSrc: "/results/clip_01_annotated.mp4",
-    duration: 45,
-    caption:
-      "4-way signalized intersection, elevated angle — a stopped vehicle blocks the box during the red phase, then a pedestrian crosses early.",
-    events: [
-      { cls: "jaywalking", start: 5, end: 8 },
-      { cls: "red_light", start: 12, end: 15 },
-      { cls: "stopped_vehicle", start: 20, end: 33 },
-    ],
-  },
-  {
-    file: "clip_02.mp4",
-    videoSrc: "/results/clip_02_annotated.mp4",
-    duration: 62,
-    caption:
-      "T-junction with a marked crosswalk — includes a near-miss between a turning car and a crossing pedestrian.",
-    events: [
-      { cls: "jaywalking", start: 10, end: 13 },
-      { cls: "near_miss", start: 30, end: 32 },
-      { cls: "failure_to_yield", start: 45, end: 48 },
-    ],
-  },
-  {
-    file: "clip_03.mp4",
-    videoSrc: "/results/clip_03_annotated.mp4",
-    duration: 38,
-    caption:
-      "Roundabout approach, overhead angle — an illegal turn against the roundabout flow, followed by brief congestion.",
-    events: [
-      { cls: "illegal_turn", start: 8, end: 12 },
-      { cls: "congestion", start: 15, end: 30 },
-    ],
-  },
-  {
-    file: "clip_04.mp4",
-    videoSrc: "/results/clip_04_annotated.mp4",
-    duration: 55,
-    caption:
-      "Straight road segment with a pedestrian crossing, side-mounted camera — a jaywalker outside the marked zone, plus a solid-line lane change.",
-    events: [
-      { cls: "jaywalking", start: 20, end: 24 },
-      { cls: "solid_line_crossing", start: 35, end: 37 },
-      { cls: "stop_line", start: 40, end: 41 },
-    ],
-  },
-];
+// Real output of the submitted pipeline (predictions_samples.json) and our own
+// Label Studio labels of the 4 sample videos (my_labels.json). All 4 clips come
+// from the same fixed camera.
+type Clip = (typeof DATA.videos)[number];
+const CLIPS = DATA.videos as Clip[];
+const asEvents = (evs: { cls: string; start: number; end: number }[]) => evs as TimelineEvent[];
 
-// TODO: replace with a real per-frame risk trace from the Part B causal loop
-// for this clip, once it's been run.
-const RISK_TRACE = Array.from({ length: 63 }, (_, t) => {
-  const base = 0.05 + 0.03 * Math.sin(t / 6);
-  const spike = Math.exp(-Math.pow(t - 31, 2) / 8) * 0.75;
-  return { t, risk: Math.max(0, Math.min(1, base + spike)) };
-});
+const CAPTIONS: Record<string, string> = {
+  C3896: "Daytime, main camera framing. Congestion and the one red-light run are caught; turn and stop-line events are missed.",
+  C3897: "Daytime, same framing as C3896. Many failure_to_yield false alarms where cars pass pedestrians waiting at the kerb.",
+  C3902: "Held out (never used for tuning), zoomed-out framing. Our hand-drawn geometry does not match this view, so it is the honest test.",
+  C3905: "Evening, slightly shifted framing. Congestion matches the label closely (tIoU 0.73); a stop-line violation is missed.",
+};
 
-// TODO: these are illustrative categories, not confirmed findings. Replace
-// each with a real example: which clip, what timestamp range, and a one-line
-// description of what the rule module got wrong (attach a screenshot if you
-// have one).
 const LIMITATIONS = [
   {
-    title: "Whole-clip false positives",
+    title: "Pedestrians at the kerb flagged as jaywalking",
     description:
-      "TODO: name a clip where a rule module fires for the entire duration instead of a bounded segment (e.g. congestion never resolving), and note the likely cause (missing hysteresis, bad threshold).",
+      "Lane polygons slightly overlap the pavement edge, so people waiting to cross (feet just inside the polygon) trigger jaywalking. Visible in C3905 around 71-88 s. Fix: shrink lanes at the kerb or require movement into the road.",
   },
   {
-    title: "Lane geometry gaps at open intersections",
+    title: "Geometry is per camera framing",
     description:
-      "TODO: name a clip where hand-drawn lane polygons don't cover part of the junction (e.g. a wide roundabout or an unmarked shoulder), causing missed or misattributed events there.",
+      "The camera is re-framed between clips. C3902 falls back to C3896's layout, so its traffic-light crop reads 'unknown' 99% of the time and lanes are offset; the held-out Score A drops to 0.054. Fix: register the geometry to each video automatically.",
   },
   {
-    title: "Traffic-light misclassification under glare",
+    title: "Five classes never detected",
     description:
-      "TODO: note a clip/timestamp where HSV thresholding misreads the light color (backlight, motion blur, or a green-tinted red at dusk) and what that caused downstream (a missed or false red_light event).",
+      "stop_line, illegal_turn, solid_line_crossing, illegal_u_turn and near_miss score 0: the scene has no solid-line or turn-restriction geometry, and the near-miss and U-turn rules only produced false alarms, so they are removed from the submission.",
   },
 ];
 
@@ -147,21 +90,17 @@ export default function ResultsPage() {
           Concrete output on the 4 sample videos — including where it
           doesn&apos;t work yet.
         </p>
-        <div className="mt-2 flex items-start gap-2 rounded-md border border-status-orange/30 bg-status-orange/5 px-4 py-3">
-          <Badge
-            variant="outline"
-            className="h-auto shrink-0 border-status-orange/50 px-2 py-0.5 font-mono text-[0.65rem] text-status-orange"
-          >
-            placeholder data
-          </Badge>
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            No annotated output videos or prediction files exist in the repo
-            yet, so the clips below show a placeholder panel and the
-            timelines/risk trace use illustrative, clearly-marked sample
-            data. Drop real annotated clips into{" "}
-            <code className="font-mono">public/results/</code> and they will
-            render automatically.
-          </p>
+        <div className="mt-2 grid gap-3 sm:grid-cols-3">
+          {[
+            { v: DATA.scores.all.scoreA.toFixed(3), l: "Score A, all 4 videos (our labels)" },
+            { v: DATA.scores.heldOut.scoreA.toFixed(3), l: "Score A, held-out C3902: the honest estimate" },
+            { v: DATA.scores.untunedAll.toFixed(3), l: "Score A before threshold tuning" },
+          ].map((m) => (
+            <div key={m.l} className="rounded-md border border-border/70 bg-card/40 px-4 py-3">
+              <div className="font-mono text-2xl text-status-cyan">{m.v}</div>
+              <div className="text-xs text-muted-foreground">{m.l}</div>
+            </div>
+          ))}
         </div>
       </motion.div>
 
@@ -174,20 +113,61 @@ export default function ResultsPage() {
         className="grid gap-8 lg:grid-cols-2"
       >
         {CLIPS.map((clip) => (
-          <motion.div key={clip.file} variants={cardItem}>
+          <motion.div key={clip.id} variants={cardItem}>
             <Card className="flex h-full flex-col gap-4 border border-border/70 bg-card/60 p-0 shadow-none">
-              <ClipMedia videoSrc={clip.videoSrc} clip={clip.file} />
+              <ClipMedia videoSrc={clip.video} clip={clip.file} />
               <CardContent className="flex flex-col gap-3 pb-4">
-                <CardTitle className="font-mono text-sm">{clip.file}</CardTitle>
-                <TimelineStrip duration={clip.duration} events={clip.events} />
+                <CardTitle className="flex items-center gap-2 font-mono text-sm">
+                  {clip.file}
+                  {clip.heldOut && (
+                    <Badge variant="outline" className="border-status-orange/50 font-mono text-[0.6rem] text-status-orange">
+                      held out
+                    </Badge>
+                  )}
+                </CardTitle>
+                <div className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">Model output</div>
+                <TimelineStrip duration={clip.duration} events={asEvents(clip.pred)} />
+                <div className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">Our labels</div>
+                <TimelineStrip duration={clip.duration} events={asEvents(clip.labels)} />
                 <p className="text-sm leading-relaxed text-muted-foreground">
-                  {clip.caption}
+                  {CAPTIONS[clip.id]}
                 </p>
               </CardContent>
             </Card>
           </motion.div>
         ))}
       </motion.div>
+
+      <RevealSection className="flex flex-col gap-4">
+        <h2 className="font-heading text-xl font-semibold">Per-class score (official evaluate.py)</h2>
+        <p className="text-sm text-muted-foreground">
+          F1 at temporal-IoU thresholds 0.3 / 0.5 / 0.7 against our own labels of all 4 videos
+          (59 events). Thresholds were tuned on C3896, C3897 and C3905; C3902 was held out.
+        </p>
+        <div className="overflow-x-auto rounded-md border border-border/70">
+          <table className="w-full font-mono text-xs">
+            <thead className="bg-muted/40 text-muted-foreground">
+              <tr>
+                {["class", "F1@0.3", "F1@0.5", "F1@0.7", "mean", "TP/FP/FN@0.5"].map((h) => (
+                  <th key={h} className="px-3 py-2 text-left font-normal">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {DATA.scores.all.classes.map((c) => (
+                <tr key={c.cls} className="border-t border-border/50">
+                  <td className="px-3 py-2">{c.cls}</td>
+                  <td className="px-3 py-2">{c.f1_03.toFixed(2)}</td>
+                  <td className="px-3 py-2">{c.f1_05.toFixed(2)}</td>
+                  <td className="px-3 py-2">{c.f1_07.toFixed(2)}</td>
+                  <td className="px-3 py-2 text-status-cyan">{c.mean.toFixed(2)}</td>
+                  <td className="px-3 py-2 text-muted-foreground">{c.tp}/{c.fp}/{c.fn}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </RevealSection>
 
       <Separator />
 
@@ -197,16 +177,17 @@ export default function ResultsPage() {
           Accident-risk score over time
         </h2>
         <p className="text-sm text-muted-foreground">
-          Risk score for <span className="font-mono">clip_02.mp4</span>,
-          computed frame-by-frame from time-to-collision and braking signals
-          — with no lookahead: each point only ever sees frames up to that
-          moment.
+          Part B risk for <span className="font-mono">C3905.MP4</span> (max per second),
+          computed from time-to-collision and braking signals with no lookahead:
+          each point only sees frames up to that moment. None of the sample videos
+          contains an accident, so Part B cannot be scored on them; peaks here are
+          close-passing traffic, i.e. potential false alarms.
         </p>
         <Card className="border border-border/70 bg-card/60 shadow-none">
           <CardContent className="pt-4">
             <div className="h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={RISK_TRACE} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                <LineChart data={CLIPS.find((c) => c.id === "C3905")!.risk} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                   <XAxis
                     dataKey="t"
@@ -236,11 +217,6 @@ export default function ResultsPage() {
             </div>
           </CardContent>
         </Card>
-        <p className="font-mono text-[11px] leading-relaxed text-status-orange/80">
-          &gt; placeholder data — TODO: replace with a real per-frame risk
-          trace from the Part B causal loop once it has been run on this
-          clip.
-        </p>
       </RevealSection>
 
       <Separator />
@@ -263,7 +239,7 @@ export default function ResultsPage() {
               <CardHeader>
                 <CardTitle className="text-sm">{item.title}</CardTitle>
               </CardHeader>
-              <CardContent className="pt-1 text-xs leading-relaxed text-status-orange/80">
+              <CardContent className="pt-1 text-xs leading-relaxed text-muted-foreground">
                 {item.description}
               </CardContent>
             </Card>

@@ -72,23 +72,23 @@ const STEPS: Step[] = [
     title: "Rule evaluation",
     color: "var(--status-red)",
     description:
-      "Each of the 14 event classes has its own rule module that takes trajectories and scene geometry as input and applies plain conditional logic — no learning involved. Thresholds live in one config file and were tuned by hand against the team's own labels of the sample videos.",
+      "Each of the 14 event classes has its own rule module that takes trajectories and scene geometry as input and applies plain conditional logic — no learning involved. Thresholds live in one config file and were tuned against the team's own labels of three sample videos, with the fourth held out. Three rules (near_miss, wrong_way, illegal_u_turn) only produced false alarms, so the submission leaves them out and predicts 11 classes.",
     detail:
-      "wrong_way fires when a vehicle's direction of travel deviates from its lane's legal direction beyond a threshold, sustained over time · jaywalking fires when a pedestrian's foot position sits inside a lane polygon but outside every crosswalk polygon for at least N seconds · red_light fires when a vehicle crosses the stop line segment at the exact moment the classified light state is red.",
+      "jaywalking fires when a pedestrian's foot position sits inside a lane polygon but outside every crosswalk polygon for at least 3 seconds · congestion fires when at least 12 vehicles crawl below a speed threshold at the same time · red_light fires when a vehicle crosses the stop line segment at the exact moment the classified light state is red.",
   },
   {
     number: "05",
     title: "Post-processing",
     color: "var(--status-green)",
     description:
-      "Raw per-frame rule triggers are noisy, so they're cleaned up: fragments from the same track less than 1 second apart get merged, blips under 0.5 seconds get dropped, overlapping segments of the same class get collapsed, and everything is clipped to the video length. What's left is the final [start_sec, end_sec, label] event list.",
+      "Rules fire once per object, but the annotation convention is one segment per event, so segments are cleaned up per class: overlapping segments of the same class are merged, fragments closer than a class-specific gap are joined (1 s for jaywalking, 10 s for congestion), segments shorter than a class-specific minimum are dropped (4 s for jaywalking, 20 s for congestion), and everything is clipped to the video length. What's left is the final [start_sec, end_sec, label] event list.",
   },
   {
     number: "06",
     title: "Accident-risk estimation",
     color: "var(--status-cyan)",
     description:
-      "A bonus, strictly causal loop runs its own detector and tracker on the same sampled frames — it never reads the source file or Part A's output. Risk is pairwise time-to-collision between tracked objects (5 seconds or less counts as high) blended with sudden-deceleration spikes, smoothed into a per-frame score between 0 and 1 that decays back toward 0 when nothing is happening.",
+      "A bonus, strictly causal loop runs its own detector and tracker on every 3rd frame the harness streams to it — it never reads the source file or Part A's output. Risk is pairwise time-to-collision between tracked objects (5 seconds or less counts as high) blended with sudden-deceleration spikes, smoothed into a per-frame score between 0 and 1 that decays back toward 0 when nothing is happening.",
   },
 ];
 
@@ -122,7 +122,7 @@ export default function ApproachPage() {
           zooming, no camera motion at all. From that single static view, the
           system has to detect fourteen types of traffic events and report
           each one as a time segment: a start second, an end second, and a
-          label. As a bonus task, it also produces a real-time accident-risk
+          label. As a bonus task, it also produces a causal accident-risk
           score for every frame.
         </p>
         <div className="flex flex-wrap gap-2 pt-1">
